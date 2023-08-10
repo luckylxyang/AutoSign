@@ -38,9 +38,15 @@ compose.desktop {
     application {
         mainClass = "MainKt"
         nativeDistributions {
-            targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
-            packageName = "KSPDemo"
+            targetFormats(TargetFormat.Dmg,TargetFormat.Exe, TargetFormat.Msi, TargetFormat.Deb)
+            packageName = "自动签名工具"
             packageVersion = "1.0.0"
+
+            windows {
+                packageVersion = "1.0.0"
+                msiPackageVersion = "1.0.0"
+                exePackageVersion = "1.0.0"
+            }
         }
     }
 }

@@ -2,22 +2,29 @@
 import androidx.compose.material.MaterialTheme
 import androidx.compose.desktop.ui.tooling.preview.Preview
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Button
 import androidx.compose.material.Text
 import androidx.compose.material.TextField
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.*
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import com.google.gson.Gson
 import com.google.gson.JsonObject
-import sun.nio.ch.IOUtil
+import java.awt.Desktop
 import java.io.BufferedReader
 import java.io.File
 import java.io.InputStreamReader
@@ -33,8 +40,14 @@ fun App() {
     val alias = remember { mutableStateOf("") }
     val keyPassword = remember { mutableStateOf("") }
     val aliasPassword = remember { mutableStateOf("") }
+    val result = remember { mutableStateOf("") }
+    val packageStatus = remember { mutableStateOf(false) }
+    val focusRequester1 = remember { FocusRequester() }
+    val focusRequester2 = remember { FocusRequester() }
+    val focusRequester3 = remember { FocusRequester() }
+
     val config = readConfig()
-    if (!config.isNullOrEmpty()){
+    if (!config.isNullOrEmpty()) {
         val json = Gson().fromJson<JsonObject>(config, JsonObject::class.java)
         toolsPath.value = json["buildToolsDir"].asString
         folderPath.value = json["jksPath"].asString
@@ -90,79 +103,169 @@ fun App() {
                 value = keyPassword.value,
                 onValueChange = { keyPassword.value = it },
                 label = { Text("签名密码：") },
-                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).focusRequester(focusRequester1),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardActions = KeyboardActions(
+                    onNext = { focusRequester2.requestFocus() }
+                ),
             )
 
             TextField(
                 value = alias.value,
                 onValueChange = { alias.value = it },
                 label = { Text("别名：") },
-                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).focusRequester(focusRequester2),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardActions = KeyboardActions(
+                    onNext = { focusRequester3.requestFocus() }
+                )
             )
             TextField(
                 value = aliasPassword.value,
                 onValueChange = { aliasPassword.value = it },
                 label = { Text("别名密码：") },
-                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).focusRequester(focusRequester3),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             )
-            Button(onClick = { runCommand(toolsPath.value, folderPath.value, apkPath.value, keyPassword.value, alias.value, aliasPassword.value) }) {
-                Text("对齐")
+            Row {
+                Button(
+
+                    modifier = Modifier.padding(horizontal = 8.dp), onClick = {
+                        runCommand(
+                            toolsPath.value,
+                            folderPath.value,
+                            apkPath.value,
+                            keyPassword.value,
+                            alias.value,
+                            aliasPassword.value,
+                            result
+                        )
+                    }) {
+                    Text("开始签名")
+                }
+
+                Button(
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                    onClick = { openDir(apkPath.value, result) }) {
+                    Text("打开文件夹")
+                }
             }
-            Button(onClick = { runCommand(toolsPath.value, folderPath.value, apkPath.value, keyPassword.value, alias.value, aliasPassword.value) }) {
-                Text("开始签名")
-            }
+
+            ScrollableText(result.value)
+        }
+    }
+}
+
+
+fun openDir(path: String, result: MutableState<String>): Unit {
+    val file = File(path)
+    val folder = file.parentFile
+    if (folder == null || !folder.exists()){
+        result.value = result.value.plus("先选择要打包的文件\n")
+        return
+    }
+
+    if (folder.exists() && folder.isDirectory) {
+        val desktop = Desktop.getDesktop()
+        desktop.open(folder)
+    } else {
+        println("文件夹不存在或者不是一个有效的文件夹路径。")
+    }
+}
+
+@Composable
+fun ScrollableText(text: String) {
+    val lines = text.split("\n")
+
+    val state = rememberScrollState()
+    LaunchedEffect(Unit) { state.animateScrollTo(lines.size - 1) }
+
+    Column(modifier = Modifier.verticalScroll(state)) {
+        lines.forEach { message ->
+            Text(text = message)
         }
     }
 }
 
 fun main() = application {
-    Window(onCloseRequest = ::exitApplication) {
+    Window(
+        onCloseRequest = ::exitApplication,
+        title = "自动签名工具"
+    ) {
         App()
     }
 }
 
-fun runCommand(buildToolsDir: String, jksPath: String, apkPath: String, keyPassword: String, alias: String, aliasPassword: String) {
+fun runCommand(
+    buildToolsDir: String,
+    jksPath: String,
+    apkPath: String,
+    keyPassword: String,
+    alias: String,
+    aliasPassword: String,
+    result: MutableState<String>
+) {
 
-    saveInputToJson(buildToolsDir, jksPath, "dist", "distmobile", "distmobile")
+    saveInputToJson(buildToolsDir, jksPath, alias, keyPassword, aliasPassword)
     if (buildToolsDir.isEmpty() || jksPath.isEmpty() || apkPath.isEmpty()) {
         return
     }
-// 创建命令行参数，使用文件路径作为参数
+    // 创建命令行参数，使用文件路径作为参数
     val apkName = apkPath.substring(apkPath.lastIndexOf(File.separator) + 1)
     val apkUnSignName = "unSign-$apkName"
     val apkSignName = "sign-$apkName"
     val fileDir = apkPath.substring(0, apkPath.lastIndexOf(File.separator))
 
     val zipalignCmd = "$buildToolsDir\\zipalign -v -p 4 $apkPath ${fileDir + File.separator + apkUnSignName}"
-    val apksignerCmd =
-        "$buildToolsDir\\apksigner sign --ks $jksPath --out ${fileDir + File.separator + apkSignName} ${fileDir + File.separator + apkUnSignName}"
 
     // 执行命令
-    executeCommand(zipalignCmd)
-    executeCommand("exit")
-    executeCommand(apksignerCmd)
+    executeCommand(zipalignCmd, result)
 
     val command = """
-        $buildToolsDir\zipalign -v -p 4 $apkPath ${fileDir + File.separator + apkUnSignName}
-        $buildToolsDir\apksigner sign --ks $jksPath --ks-pass pass:$keyPassword --key-alias $alias --key-pass pass:$aliasPassword --out ${fileDir + File.separator + apkSignName} ${fileDir + File.separator + apkUnSignName}
+        $buildToolsDir\./apksigner sign --ks $jksPath --ks-pass pass:$keyPassword --ks-key-alias $alias --key-pass pass:$aliasPassword --out ${fileDir + File.separator + apkSignName} ${fileDir + File.separator + apkUnSignName}
     """.trimIndent()
+    executeCommand2(command, result)
 }
 
-fun executeCommand(cmd: String) {
-//    val runtime = Runtime.getRuntime()
-//    val exec = runtime.exec(cmd)
-//    val exitCode = exec.waitFor()
+fun executeCommand(cmd: String, result: MutableState<String>) {
+
+    println(cmd)
+
+    val process = Runtime.getRuntime().exec(cmd)
+    val reader = BufferedReader(InputStreamReader(process.inputStream))
+    var line: String?
+
+    while (reader.readLine().also { line = it } != null) {
+        // 处理命令输出
+        println(line)
+        result.value = result.value.plus(line + "\n")
+    }
+
+    process.waitFor()
+    reader.close()
+}
+
+fun executeCommand2(cmd: String, result: MutableState<String>) {
+
+    println(cmd)
+
     val processBuilder = ProcessBuilder("cmd", "/c", cmd).directory(File("."))
     val process = processBuilder.start()
     val exitCode = process.waitFor()
     if (exitCode == 0) {
+        result.value = result.value.plus("Command completed successfully")
         println("Command completed successfully")
     } else {
         println("Command failed with exit code $exitCode")
     }
 }
 
-fun saveInputToJson(buildToolsDir: String, jksPath :String, alias: String, jksPassword: String,keyPassword : String ){
+fun saveInputToJson(buildToolsDir: String, jksPath: String, alias: String, jksPassword: String, keyPassword: String) {
     val map = HashMap<String, String>()
     map["buildToolsDir"] = buildToolsDir
     map["jksPath"] = jksPath
@@ -171,8 +274,11 @@ fun saveInputToJson(buildToolsDir: String, jksPath :String, alias: String, jksPa
     map["aliasPassword"] = keyPassword
 
     val toJson = Gson().toJson(map)
-    val file = File("C:\\Users\\HUAWEI\\Documents\\db.json")
-    if (!file.exists()){
+    val cacheDir = System.getProperty("java.io.tmpdir")
+    val file = File("$cacheDir/auto_sign_config.json")
+//    val file = File("C:\\Users\\HUAWEI\\Documents\\db.json")
+
+    if (!file.exists()) {
         file.createNewFile()
     }
     // 创建 File 对象
@@ -181,16 +287,22 @@ fun saveInputToJson(buildToolsDir: String, jksPath :String, alias: String, jksPa
     file.writeText(toJson, Charsets.UTF_8)
 }
 
-fun readConfig() : String {
-    val fileChooser = JFileChooser()
+fun readConfig(): String {
     var text = ""
-    if (fileChooser.showSaveDialog(null) == JFileChooser.APPROVE_OPTION) {
-        // 创建 File 对象
-        val file = fileChooser.selectedFile
+//    val fileChooser = JFileChooser()
+//    if (fileChooser.showSaveDialog(null) == JFileChooser.APPROVE_OPTION) {
+//        // 创建 File 对象
+//        val file = fileChooser.selectedFile
+//
+//        // 将输入框的值写入文件
+//        text = file.readText(Charsets.UTF_8)
+//
+//    }
 
-        // 将输入框的值写入文件
+    val cacheDir = System.getProperty("java.io.tmpdir")
+    val file = File("$cacheDir/auto_sign_config.json")
+    if (file.exists()) {
         text = file.readText(Charsets.UTF_8)
-
     }
     return text
 }
