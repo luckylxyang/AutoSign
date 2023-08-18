@@ -255,11 +255,14 @@ fun runCommand(
     result: MutableState<String>
 ) {
 
-    result.value = "开始打包...\n"
+
+
     saveInputToJson(buildToolsDir, jksPath, alias, keyPassword, aliasPassword)
     if (buildToolsDir.isEmpty() || jksPath.isEmpty() || apkPath.isEmpty()) {
+        result.value = "请先完善所需参数...\n"
         return
     }
+    result.value = "开始打包...\n"
     // 创建命令行参数，使用文件路径作为参数
     val apkName = apkPath.substring(apkPath.lastIndexOf(File.separator) + 1)
     val apkUnSignName = "unSign-$apkName"
