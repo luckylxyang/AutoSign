@@ -1,33 +1,37 @@
 // Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
-import androidx.compose.material.MaterialTheme
 import androidx.compose.desktop.ui.tooling.preview.Preview
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.Button
-import androidx.compose.material.Text
-import androidx.compose.material.TextField
+import androidx.compose.material.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.runtime.*
-import androidx.compose.ui.ExperimentalComposeUiApi
+
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.input.key.*
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import com.google.gson.Gson
 import com.google.gson.JsonObject
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import java.awt.Desktop
 import java.io.BufferedReader
 import java.io.File
 import java.io.InputStreamReader
+import javax.imageio.ImageIO
 import javax.swing.JFileChooser
 
 @Composable
@@ -41,7 +45,8 @@ fun App() {
     val keyPassword = remember { mutableStateOf("") }
     val aliasPassword = remember { mutableStateOf("") }
     val result = remember { mutableStateOf("") }
-    val packageStatus = remember { mutableStateOf(false) }
+    val passwordHidden1 = remember { mutableStateOf(false) }
+    val passwordHidden2 = remember { mutableStateOf(false) }
     val focusRequester1 = remember { FocusRequester() }
     val focusRequester2 = remember { FocusRequester() }
     val focusRequester3 = remember { FocusRequester() }
@@ -104,12 +109,25 @@ fun App() {
                 onValueChange = { keyPassword.value = it },
                 label = { Text("签名密码：") },
                 singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
                 modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).focusRequester(focusRequester1),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                 keyboardActions = KeyboardActions(
                     onNext = { focusRequester2.requestFocus() }
                 ),
+                trailingIcon = {
+                    IconButton(
+                        onClick = {
+                            passwordHidden1.value = !passwordHidden1.value
+                        }
+                    ){
+                        if(!passwordHidden1.value){
+                            Icon(painter = painterResource("images/visibility_off.png"), null)
+                        } else {
+                            Icon(painter = painterResource("images/visibility.png"), null)
+                        }
+                    }
+                },
+                visualTransformation = if(!passwordHidden1.value) PasswordVisualTransformation() else VisualTransformation.None
             )
 
             TextField(
@@ -128,7 +146,20 @@ fun App() {
                 onValueChange = { aliasPassword.value = it },
                 label = { Text("别名密码：") },
                 singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
+                trailingIcon = {
+                    IconButton(
+                        onClick = {
+                            passwordHidden2.value = !passwordHidden2.value
+                        }
+                    ){
+                        if(!passwordHidden2.value){
+                            Icon(painter = painterResource("images/visibility_off.png"), null)
+                        } else {
+                            Icon(painter = painterResource("images/visibility.png"), null)
+                        }
+                    }
+                },
+                visualTransformation = if(!passwordHidden2.value) PasswordVisualTransformation() else VisualTransformation.None,
                 modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).focusRequester(focusRequester3),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             )
@@ -165,7 +196,7 @@ fun App() {
 fun openDir(path: String, result: MutableState<String>): Unit {
     val file = File(path)
     val folder = file.parentFile
-    if (folder == null || !folder.exists()){
+    if (folder == null || !folder.exists()) {
         result.value = result.value.plus("先选择要打包的文件\n")
         return
     }
@@ -181,14 +212,27 @@ fun openDir(path: String, result: MutableState<String>): Unit {
 @Composable
 fun ScrollableText(text: String) {
     val lines = text.split("\n")
+    val scrollState = rememberLazyListState()
 
-    val state = rememberScrollState()
-    LaunchedEffect(Unit) { state.animateScrollTo(lines.size - 1) }
-
-    Column(modifier = Modifier.verticalScroll(state)) {
-        lines.forEach { message ->
-            Text(text = message)
+    LazyColumn(
+        state = scrollState
+    ) {
+        items(lines.size) { index ->
+            Text(lines[index])
         }
+    }
+
+    LaunchedEffect(lines.size) {
+        // Scroll to the last item
+        lines.size.takeIf { it > 0 }?.let { lastIndex ->
+            // Scroll to the last item
+            coroutineScope {
+                launch {
+                    scrollState.scrollToItem(lastIndex)
+                }
+            }
+        }
+
     }
 }
 
@@ -211,6 +255,7 @@ fun runCommand(
     result: MutableState<String>
 ) {
 
+    result.value = "开始打包...\n"
     saveInputToJson(buildToolsDir, jksPath, alias, keyPassword, aliasPassword)
     if (buildToolsDir.isEmpty() || jksPath.isEmpty() || apkPath.isEmpty()) {
         return
@@ -229,7 +274,7 @@ fun runCommand(
     val command = """
         $buildToolsDir\./apksigner sign --ks $jksPath --ks-pass pass:$keyPassword --ks-key-alias $alias --key-pass pass:$aliasPassword --out ${fileDir + File.separator + apkSignName} ${fileDir + File.separator + apkUnSignName}
     """.trimIndent()
-    executeCommand2(command, result)
+    executeCommand2(command, result, fileDir + File.separator + apkUnSignName)
 }
 
 fun executeCommand(cmd: String, result: MutableState<String>) {
@@ -239,18 +284,19 @@ fun executeCommand(cmd: String, result: MutableState<String>) {
     val process = Runtime.getRuntime().exec(cmd)
     val reader = BufferedReader(InputStreamReader(process.inputStream))
     var line: String?
-
-    while (reader.readLine().also { line = it } != null) {
-        // 处理命令输出
-        println(line)
-        result.value = result.value.plus(line + "\n")
+    runBlocking {
+        while (reader.readLine().also { line = it } != null) {
+            // 处理命令输出
+            println(line)
+            result.value = result.value.plus(line + "\n")
+        }
     }
 
     process.waitFor()
     reader.close()
 }
 
-fun executeCommand2(cmd: String, result: MutableState<String>) {
+fun executeCommand2(cmd: String, result: MutableState<String>, cacheFile: String) {
 
     println(cmd)
 
@@ -258,10 +304,26 @@ fun executeCommand2(cmd: String, result: MutableState<String>) {
     val process = processBuilder.start()
     val exitCode = process.waitFor()
     if (exitCode == 0) {
-        result.value = result.value.plus("Command completed successfully")
+        result.value = result.value.plus("签名成功")
+        clearCacheFile(cacheFile)
         println("Command completed successfully")
     } else {
+        result.value = result.value.plus("签名失败")
         println("Command failed with exit code $exitCode")
+    }
+}
+
+fun clearCacheFile(cacheFile: String) {
+    val file = File(cacheFile)
+
+    if (file.exists()) {
+        if (file.delete()) {
+            println("文件已成功删除")
+        } else {
+            println("无法删除文件")
+        }
+    } else {
+        println("文件不存在")
     }
 }
 
