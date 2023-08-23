@@ -33,6 +33,8 @@ import java.io.File
 import java.io.InputStreamReader
 import javax.imageio.ImageIO
 import javax.swing.JFileChooser
+import javax.swing.filechooser.FileFilter
+import javax.swing.filechooser.FileNameExtensionFilter
 
 @Composable
 @Preview
@@ -71,7 +73,10 @@ fun App() {
                 text = "请选择 tools 路径：${toolsPath.value}",
                 modifier = Modifier.clickable(onClick = {
                     val fileChooser = JFileChooser()
-                    fileChooser.fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
+                    fileChooser.run {
+                        fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
+                        currentDirectory = File(toolsPath.value)
+                    }
                     val result = fileChooser.showOpenDialog(null)
                     if (result == JFileChooser.APPROVE_OPTION) {
                         val folder = fileChooser.selectedFile
@@ -83,7 +88,11 @@ fun App() {
                 text = "请选择安装包：${apkPath.value}",
                 modifier = Modifier.clickable(onClick = {
                     val fileChooser = JFileChooser()
-                    fileChooser.fileSelectionMode = JFileChooser.FILES_ONLY
+                    fileChooser.run {
+                        fileSelectionMode = JFileChooser.FILES_ONLY
+                        fileFilter = FileNameExtensionFilter("选择安装文件", "apk")
+                        currentDirectory = File(apkPath.value)
+                    }
                     val result = fileChooser.showOpenDialog(null)
                     if (result == JFileChooser.APPROVE_OPTION) {
                         val folder = fileChooser.selectedFile
@@ -95,7 +104,10 @@ fun App() {
                 text = "请选择签名文件：${folderPath.value}",
                 modifier = Modifier.clickable(onClick = {
                     val fileChooser = JFileChooser()
-                    fileChooser.fileSelectionMode = JFileChooser.FILES_ONLY
+                    fileChooser.run {
+                        fileSelectionMode = JFileChooser.FILES_ONLY
+                        currentDirectory = File(folderPath.value)
+                    }
                     val result = fileChooser.showOpenDialog(null)
                     if (result == JFileChooser.APPROVE_OPTION) {
                         val folder = fileChooser.selectedFile
@@ -277,7 +289,8 @@ fun runCommand(
     val command = """
         $buildToolsDir\./apksigner sign --ks $jksPath --ks-pass pass:$keyPassword --ks-key-alias $alias --key-pass pass:$aliasPassword --out ${fileDir + File.separator + apkSignName} ${fileDir + File.separator + apkUnSignName}
     """.trimIndent()
-    executeCommand2(command, result, fileDir + File.separator + apkUnSignName)
+    executeCommand2(command, result, fileDir + File.separator + apkUnSignName, fileDir + File.separator + apkSignName + ".idsig")
+
 }
 
 fun executeCommand(cmd: String, result: MutableState<String>) {
@@ -299,7 +312,7 @@ fun executeCommand(cmd: String, result: MutableState<String>) {
     reader.close()
 }
 
-fun executeCommand2(cmd: String, result: MutableState<String>, cacheFile: String) {
+fun executeCommand2(cmd: String, result: MutableState<String>, vararg cacheFile: String) {
 
     println(cmd)
 
@@ -308,7 +321,7 @@ fun executeCommand2(cmd: String, result: MutableState<String>, cacheFile: String
     val exitCode = process.waitFor()
     if (exitCode == 0) {
         result.value = result.value.plus("签名成功")
-        clearCacheFile(cacheFile)
+        clearCacheFile(*cacheFile)
         println("Command completed successfully")
     } else {
         result.value = result.value.plus("签名失败")
@@ -316,18 +329,21 @@ fun executeCommand2(cmd: String, result: MutableState<String>, cacheFile: String
     }
 }
 
-fun clearCacheFile(cacheFile: String) {
-    val file = File(cacheFile)
+fun clearCacheFile(vararg cacheFile: String) {
+    cacheFile.forEach {
+        val file = File(it)
 
-    if (file.exists()) {
-        if (file.delete()) {
-            println("文件已成功删除")
+        if (file.exists()) {
+            if (file.delete()) {
+                println("文件已成功删除")
+            } else {
+                println("无法删除文件")
+            }
         } else {
-            println("无法删除文件")
+            println("文件不存在")
         }
-    } else {
-        println("文件不存在")
     }
+
 }
 
 fun saveInputToJson(buildToolsDir: String, jksPath: String, alias: String, jksPassword: String, keyPassword: String) {
