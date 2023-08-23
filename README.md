@@ -3,5 +3,6 @@
 
 下载链接： ![Windows OS](blob:https://github.com/a1505f2e-7eb4-4547-abc7-5921c0194175) iOS 自己编译
 
-![image](https://github.com/luckylxyang/AutoSign/assets/23414436/b1619230-3824-4a00-9989-e1764130117c)
+![image](https://github.com/luckylxyang/AutoSign/assets/23414436/06440952-1f7c-44e0-b30c-bc1b13e211ec)
+
 
